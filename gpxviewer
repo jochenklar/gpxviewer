@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import webbrowser
+import xml.etree.ElementTree as et
+from pathlib import Path
+
+# parse command line arguments
+parser = argparse.ArgumentParser()
+parser.add_argument('input')
+parser.add_argument('--template', default='template.html')
+args = parser.parse_args()
+
+# use pathlib for the paths
+input_path = Path(args.input)
+output_path = input_path.with_suffix('.html')
+template_path = Path(args.template)
+
+# parse input file
+tree = et.parse(input_path)
+root = tree.getroot()
+ns = {
+    'gpx': 'http://www.topografix.com/GPX/1/1'
+}
+
+# loop over input file and extract coordinates
+coordinates = []
+for trk_node in root.findall('gpx:trk', ns):
+    for trkseg_node in trk_node.findall('gpx:trkseg', ns):
+        for trkpt_node in trkseg_node.findall('gpx:trkpt', ns):
+            coordinates.append((
+                trkpt_node.attrib.get('lon'),
+                trkpt_node.attrib.get('lat')
+            ))
+
+# create geojson dict
+geojson = {
+  'type': 'Feature',
+  'geometry': {
+    'type': 'LineString',
+    'coordinates': coordinates
+  },
+  'properties': {
+    'file_name': input_path.name,
+    'popup': '<strong>{}</strong>'.format(input_path.name)
+  }
+}
+
+# inject geojson to template
+html = template_path.read_text().replace('__GEOJSON__', json.dumps(geojson))
+
+# write output file
+output_path.write_text(html)
+
+# open webbrowser with output file
+webbrowser.open('file://{}'.format(output_path.resolve()))
